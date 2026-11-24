@@ -133,6 +133,7 @@ pub fn target_at(s: &Schedule, e: &Events, t: f64) -> Target {
 }
 
 /// Current local date/time: (year, day of year, minutes after midnight, local − UTC offset in minutes).
+#[cfg(windows)]
 pub fn now_local() -> (i32, u32, f64, f64) {
     let (l, u) = unsafe {
         (
@@ -157,6 +158,7 @@ pub fn minutes_to_bedtime(s: &Schedule, now: f64) -> f64 {
 }
 
 /// The schedule's target right now.
+#[cfg(windows)]
 pub fn target_now(s: &Schedule) -> Target {
     let (y, doy, t, off) = now_local();
     target_at(s, &events(s, y, doy, off), t)

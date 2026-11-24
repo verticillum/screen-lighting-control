@@ -35,13 +35,24 @@ scripts/cargo.sh fmt --all
 ### Building on Windows
 `scripts/build.ps1` (MSVC toolchain) builds a release and prints the exe size.
 
+### Building on Linux
+Install Rust with [rustup](https://rustup.rs), then `rustup target add x86_64-unknown-linux-musl`:
+
+```bash
+cargo build --release --target x86_64-unknown-linux-musl   # static binary, works on any distribution
+```
+rustc's own `rust-lld` links it. Cargo's build scripts still need a host `cc` (install `gcc`).
+To lint the Windows code too: `rustup target add x86_64-pc-windows-gnu`, then
+`SLC_SKIP_RESOURCES=1 cargo clippy --target x86_64-pc-windows-gnu --all-targets` (no resource compiler needed).
+
 ## Checks required before merging (`.local-ci`)
 
 `local-ci` (claude-toolkit) runs `.local-ci` and posts a `local-ci` status to the PR. There is no GitHub Actions: its minutes cost money on a private repo.
 - `cargo fmt --all -- --check`
 - `cargo clippy --all-targets -- -D warnings`
 - `cargo test`
-- Release `slc.exe` ≤ 1 MiB (size budget from PRODUCT §14)
+- Release `slc.exe` (Linux: `slc`) ≤ 1 MiB (size budget from PRODUCT §14)
+- On Linux without Windows, the Windows code is linted but not built, tested or smoke-tested; `.local-ci` says so.
 
 ## Smoke test
 `scripts/smoke.ps1 -Exe <slc.exe>` runs end to end on a clean machine: CLI, self-test, tray app start → commands →

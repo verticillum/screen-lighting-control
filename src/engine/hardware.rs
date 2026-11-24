@@ -2,7 +2,7 @@
 //! laptop panels. All device I/O is slow (tens to hundreds of ms), so it runs on a worker thread fed by
 //! a debounced latest-value-wins mailbox.
 
-use super::{Event, Events};
+use super::{from_device, to_device, Event, Events};
 use crate::info;
 use crate::worker::Mailbox;
 use std::sync::Arc;
@@ -50,20 +50,6 @@ pub struct Caps {
     pub kind: Kind,
     /// Current level as 0–100 of the device's range.
     pub current: f32,
-}
-
-/// Maps a 0–100 level to a device value in `min..=max`.
-pub fn to_device(level: f32, min: u32, max: u32) -> u32 {
-    let l = level.clamp(0.0, 100.0) / 100.0;
-    min + ((max - min) as f32 * l).round() as u32
-}
-
-/// Maps a device value back to 0–100.
-pub fn from_device(value: u32, min: u32, max: u32) -> f32 {
-    if max <= min {
-        return 100.0;
-    }
-    (value.clamp(min, max) - min) as f32 * 100.0 / (max - min) as f32
 }
 
 /// Nearest supported panel level for a 0–100 target.

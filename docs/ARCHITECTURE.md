@@ -34,7 +34,8 @@ Worker results carry a monitor-list generation; stale results are ignored. Every
 
 | Module | Responsibility |
 |---|---|
-| `main.rs` | Entry point, CLI parsing, single instance, panic hook, message loop. |
+| `main.rs` | Module list and per-platform `main`. Shared: `color`, `schedule`, `solar`, `cities`, `config`, `model`, `log`, pipeline split. |
+| `windows_main.rs` | Windows entry point: CLI dispatch, single instance, reset/install, self-test. |
 | `app.rs` | `App` state machine: owns the model, reacts to events, calls `engine::apply`. |
 | `model.rs` | Plain data: `Settings`, `MonitorState`, `Scene`, `Schedule`; defaults. |
 | `config.rs` | Tiny INI reader/writer (no dependencies), portable vs installed paths. |

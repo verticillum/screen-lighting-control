@@ -5,7 +5,7 @@ follow from them.
 
 | # | Topic | Decision | Notes |
 |---|---|---|---|
-| D1 | Platform | **Windows only** — Windows 10 2004+ and Windows 11 | 2004 is the minimum for capture-excluded overlays (`WDA_EXCLUDEFROMCAPTURE`). |
+| D1 | Platform | ~~Windows only~~ → **Windows and Linux** (D24): Windows 10 2004+ and Windows 11 | 2004 is the minimum for capture-excluded overlays (`WDA_EXCLUDEFROMCAPTURE`). |
 | D2 | Priority | **Maximum performance, minimum size, single `.exe`** | Stressed by the owner; guides every other technical choice. |
 | D3 | Language | **Rust** (`windows` crate, raw Win32) | Owner asked for the fastest/tiniest option; Rust matches C in speed and size (< 1 MB static exe) with memory safety. |
 | D4 | UI | **Native Win32 + Direct2D**, custom-drawn | No UI framework: instant startup, lowest memory. |
@@ -28,3 +28,7 @@ follow from them.
 | D21 | Launch distribution | **GitHub Releases + winget**, **unsigned** for now, no landing page — owner, 2026-10-06 | $0. README explains the SmartScreen prompt; signing can come later. |
 | D22 | Going public | **Replace the private repo with a new public one** of the same name, history rewritten to the GitHub noreply address; old repo deleted — owner, 2026-10-06 | GitHub's read-only PR refs kept the old author email, and only Support could purge them. Code, tags and releases 1.0.0–1.5.4 carried over unchanged; PR #1–#42 discussions were exported to a local backup and are not on GitHub. `(#N)` in commit subjects before 1.5.4 refers to those old PRs, not to this repo's. |
 | D23 | winget package | **`exe` installer running `slc.exe --install`**, not a portable package — decided by Claude, pending review, 2026-10-06 | As a portable package SLC would keep `slc.ini` in winget's package folder, which upgrades replace. `--install` uses the normal install (Programs\SLC, settings in `%APPDATA%`) and its Apps & features entry, so winget sees the version and uninstalls quietly. ID `MONTINA-Ops.ScreenLightingControl`, moniker `slc`. |
+| D24 | Linux | **Linux version in the same repo and crate**, sharing the color, schedule, settings and pipeline code — owner, 2026-11-24 | One version number. Where no Windows PC is available, `.local-ci` only lints the Windows target, and Windows releases wait for a full run on Windows. |
+| D25 | Linux interface | **Command line only**: no tray, flyout or settings window. Bars and desktops integrate from the user's own dotfiles, not this repo — owner, 2026-11-24 | `slc` must work for any distribution and bar. |
+| D26 | Linux brightness | **Backlight (DDC/CI) + gamma**, falling back to gamma alone without the one-time device permission — owner, 2026-11-24 | Same hybrid pipeline; no overlay, because the Wayland gamma protocol has no range limit. |
+| D27 | Linux scope | **Core first**: brightness, warmth, schedule, scenes, per-display, pause, panic, status. **wlr-gamma-control compositors** (Hyprland, Sway, niri, …) first — owner, 2026-11-24 | X11, GNOME and KDE can be added later. |
