@@ -6,7 +6,7 @@ use crate::cities;
 use crate::color;
 use crate::config::Ini;
 use crate::engine::{self, MAX_BRIGHTNESS, MIN_BRIGHTNESS};
-use crate::model::{MonitorSettings, Scene, SceneEffect, Settings};
+use crate::model::{MonitorSettings, Settings};
 use crate::schedule::{self, Phase, Target};
 
 /// `slc panic` pauses for this long.
@@ -73,7 +73,6 @@ pub struct Core {
     /// Manual warmth when there is no schedule.
     kelvin: u32,
     pause: Pause,
-    scene: Option<String>,
     target: Target,
     /// Remembered brightness of displays seen so far, and warmth.
     saved: Ini,
@@ -87,8 +86,6 @@ pub fn settings(ini: &Ini) -> Settings {
             (s.schedule.lat, s.schedule.lon) = (c.lat, c.lon);
         }
     }
-    // Filter and movie scenes need effects the Linux version doesn't have.
-    s.scenes.retain(|s| s.effect == SceneEffect::None);
     s
 }
 
@@ -107,7 +104,6 @@ impl Core {
             manual: None,
             kelvin,
             pause: Pause::No,
-            scene: None,
             saved,
         }
     }
@@ -185,7 +181,6 @@ impl Core {
         if self.manual.is_some_and(|(_, phase)| !self.settings.schedule.enabled || phase != self.target.phase)
         {
             self.manual = None;
-            self.scene = None;
         }
         if let Pause::Until(t) = self.pause {
             if now.unix >= t {
@@ -271,7 +266,7 @@ impl Core {
     }
 
     /// Applies a request that changes state; returns an error message for the user.
-    /// `Status`, `Scenes`, `Watch`, `Reload` and `Quit` are the daemon's.
+    /// `Status`, `Watch`, `Reload` and `Quit` are the daemon's.
     pub fn handle(&mut self, r: &Request, now: &Now) -> Result<(), String> {
         match r {
             Request::Brightness { change, display, force } => {
@@ -288,7 +283,6 @@ impl Core {
                         d.brightness = b.clamp(MIN_BRIGHTNESS, MAX_BRIGHTNESS);
                     }
                 }
-                self.scene = None;
                 self.pause = Pause::No;
             }
             Request::Warmth(c) => {
@@ -297,7 +291,6 @@ impl Core {
                     Change::By(v) => self.kelvin() as f32 + v,
                 };
                 self.set_kelvin(k);
-                self.scene = None;
                 self.pause = Pause::No;
             }
             Request::Auto => {
@@ -305,15 +298,8 @@ impl Core {
                     return Err("the schedule is off in the config file".into());
                 }
                 self.manual = None;
-                self.scene = None;
                 self.pause = Pause::No;
             }
-            Request::Scene(name) => {
-                let s = self.settings.scenes.iter().find(|s| s.name.eq_ignore_ascii_case(name)).cloned();
-                self.apply_scene(s.ok_or_else(|| format!("there is no scene {name}; see `slc scenes`"))?);
-            }
-            Request::NextScene => self.step_scene(1)?,
-            Request::PrevScene => self.step_scene(-1)?,
             Request::Pause(m) => {
                 self.pause = m.map_or(Pause::UntilResumed, |m| Pause::Until(now.unix + m * 60));
             }
@@ -324,42 +310,10 @@ impl Core {
             Request::Panic => {
                 self.displays.iter_mut().for_each(|d| d.brightness = MAX_BRIGHTNESS);
                 self.set_kelvin(color::NEUTRAL_KELVIN as f32);
-                self.scene = None;
                 self.pause = Pause::Until(now.unix + PANIC_MINUTES * 60);
             }
-            Request::Status { .. } | Request::Scenes | Request::Watch | Request::Reload | Request::Quit => {}
+            Request::Status { .. } | Request::Watch | Request::Reload | Request::Quit => {}
         }
-        Ok(())
-    }
-
-    fn apply_scene(&mut self, s: Scene) {
-        if let Some(b) = s.brightness {
-            self.displays.iter_mut().for_each(|d| d.brightness = b);
-        }
-        if let Some(k) = s.kelvin {
-            self.set_kelvin(k as f32);
-        }
-        self.scene = Some(s.name);
-        self.pause = Pause::No;
-    }
-
-    fn step_scene(&mut self, by: isize) -> Result<(), String> {
-        let n = self.settings.scenes.len() as isize;
-        if n == 0 {
-            return Err("there are no scenes".into());
-        }
-        let current = self
-            .settings
-            .scenes
-            .iter()
-            .position(|s| Some(&s.name) == self.scene.as_ref())
-            .map(|i| i as isize);
-        let next = match current {
-            Some(i) => (i + by).rem_euclid(n),
-            None if by > 0 => 0,
-            None => n - 1,
-        };
-        self.apply_scene(self.settings.scenes[next as usize].clone());
         Ok(())
     }
 
@@ -371,19 +325,6 @@ impl Core {
             self.saved.set(&format!("display.{}", d.key()), "brightness", format!("{:.1}", d.brightness));
         }
         &self.saved
-    }
-
-    pub fn scenes_text(&self) -> String {
-        let opt = |v: Option<String>| v.unwrap_or_else(|| "unchanged".into());
-        self.settings
-            .scenes
-            .iter()
-            .map(|s| {
-                let b = opt(s.brightness.map(|b| format!("{b:.0}%")));
-                let k = opt(s.kelvin.map(|k| format!("{k}K")));
-                format!("{}  {b}  {k}\n", s.name)
-            })
-            .collect()
     }
 
     /// Average over enabled displays.
@@ -425,9 +366,6 @@ impl Core {
                 out.push_str(" (fixed times: no city in the config)");
             }
         }
-        if let Some(s) = &self.scene {
-            out.push_str(&format!("  scene {s}"));
-        }
         out.push('\n');
         for (i, d) in self.displays.iter().enumerate() {
             let how = match (d.enabled, d.has_hardware, d.has_gamma) {
@@ -459,12 +397,11 @@ impl Core {
             _ => "null".into(),
         };
         format!(
-            "{{\"brightness\":{},\"kelvin\":{},\"mode\":\"{}\",\"paused_until\":{until},\"phase\":\"{}\",\"scene\":{},\"displays\":[{}]}}",
+            "{{\"brightness\":{},\"kelvin\":{},\"mode\":\"{}\",\"paused_until\":{until},\"phase\":\"{}\",\"displays\":[{}]}}",
             self.brightness(),
             self.kelvin(),
             self.mode(),
             self.phase(),
-            self.scene.as_deref().map_or("null".into(), json),
             displays.join(",")
         )
     }
@@ -618,20 +555,6 @@ mod tests {
     }
 
     #[test]
-    fn scenes_cycle_and_skip_unsupported_effects() {
-        let mut c = core(FIXED, 12.0);
-        assert_eq!(c.scenes_text().lines().count(), 4, "no Movie or Darkroom");
-        c.handle(&Request::PrevScene, &at(12.0)).unwrap();
-        assert_eq!(c.scene.as_deref(), Some("Night"));
-        assert_eq!(bright(&c), [35.0, 35.0]);
-        c.handle(&Request::NextScene, &at(12.0)).unwrap();
-        assert_eq!(c.scene.as_deref(), Some("Daylight"));
-        c.handle(&Request::Scene("reading".into()), &at(12.0)).unwrap();
-        assert_eq!(c.output(&c.displays[0]).kelvin, 4200);
-        assert!(c.handle(&Request::Scene("Darkroom".into()), &at(12.0)).is_err());
-    }
-
-    #[test]
     fn config_options_apply() {
         let night = format!("{FIXED}night_brightness=40\n[monitor.DP-3]\nenabled=0\n");
         let c = core(&night, 23.5);
@@ -648,7 +571,7 @@ mod tests {
         c.remove_display("DP-3");
         assert_eq!(
             c.status_json(),
-            r#"{"brightness":100,"kelvin":6500,"mode":"schedule","paused_until":null,"phase":"day","scene":null,"displays":[{"name":"DP-2","description":"Lenovo A","brightness":100,"enabled":true,"backlight":false,"gamma":false}]}"#
+            r#"{"brightness":100,"kelvin":6500,"mode":"schedule","paused_until":null,"phase":"day","displays":[{"name":"DP-2","description":"Lenovo A","brightness":100,"enabled":true,"backlight":false,"gamma":false}]}"#
         );
     }
 }

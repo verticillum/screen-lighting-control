@@ -267,7 +267,6 @@ impl Daemon {
         match r {
             Request::Status { json: true } => Ok(format!("{}\n", self.core.status_json())),
             Request::Status { json: false } => Ok(self.core.status_text(&now())),
-            Request::Scenes => Ok(self.core.scenes_text()),
             Request::Reload => {
                 self.core.set_settings(load_settings(), &now());
                 // Device permissions may have changed too.

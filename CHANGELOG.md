@@ -4,6 +4,14 @@ All notable changes to SLC. Versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-24
+
+### Removed
+- **Linux: scenes** (`slc scene`, `slc scenes`, and `scene` in the JSON status). The Linux version is brightness and warmth
+  only. `[scene.*]` sections in the config file are ignored.
+
+No changes on Windows: this release has no `slc.exe`; keep using 1.5.4.
+
 ## [1.6.0] - 2026-11-24
 
 ### Added
