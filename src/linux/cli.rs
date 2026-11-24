@@ -35,10 +35,6 @@ pub enum Request {
     },
     Warmth(Change),
     Auto,
-    Scene(String),
-    NextScene,
-    PrevScene,
-    Scenes,
     /// Minutes; `None` = until resumed.
     Pause(Option<u64>),
     Resume,
@@ -63,8 +59,6 @@ Usage: slc <command>
       [--force]                   allow going below 5%
   warmth <1200-6500 | +N | -N>  color temperature in kelvin (lower is warmer)
   auto                          return to the schedule
-  scene <name | next | prev>    apply a scene
-  scenes                        list scenes
   pause [minutes]               neutral colors, no software dimming
   resume | toggle               end the pause, or switch it on and off
   panic                         full brightness, neutral colors, pause for 1 hour
@@ -135,10 +129,6 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
             req(Request::Warmth(change))
         }
         ("auto", []) => req(Request::Auto),
-        ("scene", ["next"]) => req(Request::NextScene),
-        ("scene", ["prev"]) => req(Request::PrevScene),
-        ("scene", [_, ..]) => req(Request::Scene(rest.join(" "))),
-        ("scenes", []) => req(Request::Scenes),
         ("pause", []) => req(Request::Pause(None)),
         ("pause", [m]) => {
             let m =
@@ -184,11 +174,9 @@ mod tests {
     fn other_commands() {
         assert_eq!(p(""), Ok(Command::Help));
         assert_eq!(p("warmth 3400K"), Ok(Command::Request(Request::Warmth(Change::To(3400.0)))));
-        assert_eq!(p("scene next"), Ok(Command::Request(Request::NextScene)));
-        assert_eq!(p("scene My Scene"), Ok(Command::Request(Request::Scene("My Scene".into()))));
         assert_eq!(p("pause 60"), Ok(Command::Request(Request::Pause(Some(60)))));
         assert_eq!(p("cities sao paulo"), Ok(Command::Cities("sao paulo".into())));
-        for bad in ["warmth 900", "pause 0", "pause -3", "bogus", "quit now"] {
+        for bad in ["scene Night", "warmth 900", "pause 0", "pause -3", "bogus", "quit now"] {
             assert!(p(bad).is_err(), "{bad}");
         }
     }

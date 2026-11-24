@@ -52,3 +52,6 @@ Each line is roughly one pull request. Status: ⬜ planned · 🟨 in progress �
 - ✅ Daemon and command line, gamma — #3
 - ✅ Backlight, docs, release — #4
 - ⬜ Windows release of the shared refactor: needs a full `.local-ci` run on a Windows PC
+
+## 1.7 — Linux trimmed (Linux only)
+- ✅ Scenes removed; brightness and warmth only (D32)

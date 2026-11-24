@@ -99,7 +99,7 @@ includes NVIDIA's proprietary driver and DisplayPort MST hubs, are gamma-only to
 
 ```
 slc set 40            slc set -5 -d DP-2       slc warmth 3400       slc auto
-slc scene Night       slc pause 60             slc panic             slc status
+slc pause 60          slc panic                slc status
 ```
 
 `slc help` lists everything. For status bars, `slc watch` prints one line of JSON now and on every change. Bind

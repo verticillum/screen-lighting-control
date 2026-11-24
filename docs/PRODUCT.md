@@ -389,6 +389,6 @@ Details and status: [`ROADMAP.md`](ROADMAP.md).
 - Quitting or crashing restores colors (done by the compositor) and leaves the backlight where it is.
 - Config `$XDG_CONFIG_HOME/slc/slc.ini` is read only (D29). Brightness and warmth are kept in `$XDG_STATE_HOME/slc/state.ini`,
   by display make, model and serial.
-- Not on Linux yet: color filters, movie mode, breaks and reminders, idle dimming, per-app rules, light sensor. Their
-  scenes are left out.
+- Brightness and warmth only (D32): no scenes, color filters, movie mode, breaks and reminders, idle dimming, per-app
+  rules or light sensor, and none planned.
 - Static musl binary, ≤ 1 MiB.
