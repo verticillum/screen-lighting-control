@@ -1,6 +1,7 @@
 //! The Linux version: `slc daemon` holds the displays' gamma, and every other command talks to it over a
 //! socket. No GUI: bars, keybindings and menus call the command line.
 
+mod backlight;
 mod cli;
 mod core;
 mod daemon;
@@ -83,6 +84,10 @@ pub fn main() {
         }
         Ok(Command::SampleConfig) => {
             print!("{}", include_str!("sample.ini"));
+            Ok(())
+        }
+        Ok(Command::UdevRules) => {
+            print!("{}", include_str!("60-slc.rules"));
             Ok(())
         }
         Ok(Command::Cities(q)) => {

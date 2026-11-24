@@ -1,6 +1,6 @@
 # Screen Lighting Control (SLC)
 
-A tiny, extremely fast Windows utility that controls **how bright** your screens are and **what color** their light is.
+A tiny, extremely fast utility for Windows and Linux that controls **how bright** your screens are and **what color** their light is.
 SLC combines the ideas of [Dimmer](https://www.nelsonpires.com/software/dimmer) (dimming below the monitor's minimum)
 and [f.lux](https://justgetflux.com/) (automatic warm light at night), and improves on both.
 
@@ -14,7 +14,7 @@ and [f.lux](https://justgetflux.com/) (automatic warm light at night), and impro
 - **One ~0.7 MB exe**, no runtime, no admin rights, no network, no telemetry. Starts in ~65 ms and uses ~3 MB of RAM
   and ~0% CPU when idle.
 
-## Install
+## Install (Windows)
 
 Download `slc.exe` from the [latest release](../../releases/latest) and run it. The exe isn't code-signed yet, so
 Windows SmartScreen may say "Windows protected your PC": choose **More info › Run anyway**. Each release also has
@@ -30,7 +30,7 @@ Uninstall from Windows **Apps & features**, from Settings, or with `slc.exe --un
 everything SLC created — program, settings, shortcut, autostart and registry entries — restores each display's original
 backlight, and undoes the Windows color-range setting if SLC turned it on (Windows asks for permission once).
 
-Requirements: Windows 10 version 2004 or newer, or Windows 11 (x64).
+Windows requirements: Windows 10 version 2004 or newer, or Windows 11 (x64).
 
 ## Using SLC
 
@@ -69,6 +69,41 @@ slc.exe --expand-range     (admin) allow warmer colors / deeper gamma dimming
   do it later in Settings › Displays › **Expand…**. Darkroom is not affected by this limit.
 - Turn off **Windows Night Light** while using SLC; both change the screen colors and would fight.
 - HDR displays use backlight + overlay only.
+
+## Linux
+
+Command line only, so it fits any desktop, bar or keybinding. Warmth and software dimming need a Wayland compositor with
+wlr-gamma-control (Hyprland, Sway, niri, river, …). On X11, GNOME and KDE only the backlight can be controlled for now.
+
+Download `slc-linux-x86_64` from the [releases](../../releases), then:
+
+```sh
+install -Dm755 slc-linux-x86_64 ~/.local/bin/slc
+slc sample-config > slc.ini     # optional: edit, save as ~/.config/slc/slc.ini (set your city)
+slc daemon                      # start it with your session
+```
+
+**Backlight control** (optional, once): lets the person at the screen use the graphics card's i2c buses.
+
+```sh
+slc udev-rules | sudo tee /etc/udev/rules.d/60-slc.rules
+echo i2c-dev | sudo tee /etc/modules-load.d/slc.conf
+sudo modprobe i2c-dev
+sudo udevadm control --reload
+sudo udevadm trigger -s i2c-dev
+slc reload
+```
+
+Without it SLC dims with gamma alone. Displays whose driver doesn't link its i2c bus (`/sys/class/drm/*/ddc`), which
+includes NVIDIA's proprietary driver and DisplayPort MST hubs, are gamma-only too.
+
+```
+slc set 40            slc set -5 -d DP-2       slc warmth 3400       slc auto
+slc scene Night       slc pause 60             slc panic             slc status
+```
+
+`slc help` lists everything. For status bars, `slc watch` prints one line of JSON now and on every change. Bind
+`slc panic` to a key. If SLC dies, the compositor restores normal colors by itself.
 
 ## Documentation
 

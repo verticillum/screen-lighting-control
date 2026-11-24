@@ -35,3 +35,4 @@ follow from them.
 | D28 | Linux dependency | **`libc`** on Linux only (D17 otherwise stands) — decided by Claude, pending review, 2026-11-24 | Correct struct layouts for `poll`, `sendmsg`, `signalfd`, `ioctl`. The Wayland wire protocol is written in-house. |
 | D29 | Linux config | **SLC never writes the config file**; state is separate — decided by Claude, pending review, 2026-11-24 | Config often lives in a dotfiles repo, where rewriting would show up as changes. |
 | D30 | Linux deep dim | **Below 5% needs `--force`**, and steps stop at 5% — decided by Claude, pending review, 2026-11-24 | Replaces the Windows confirmation dialog (D14). |
+| D31 | Linux-only releases | **Published without "latest"** while Windows can't be built — decided by Claude, pending review, 2026-11-24 | The README's Windows download link must keep leading to a release with `slc.exe`. |

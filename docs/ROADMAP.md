@@ -46,3 +46,9 @@ Each line is roughly one pull request. Status: ⬜ planned · 🟨 in progress �
 - ✅ Public repo with clean history, tags and releases (D22)
 - 🟨 winget package `MONTINA-Ops.ScreenLightingControl` (D23) — [microsoft/winget-pkgs#447709](https://github.com/microsoft/winget-pkgs/pull/447709), in Microsoft's review
 - ⬜ README: `winget install slc` once the package is accepted
+
+## 1.6 — Linux ✅ (released 1.6.0, Linux only)
+- ✅ Shared code builds on Linux — #2
+- ✅ Daemon and command line, gamma — #3
+- ✅ Backlight, docs, release — #4
+- ⬜ Windows release of the shared refactor: needs a full `.local-ci` run on a Windows PC

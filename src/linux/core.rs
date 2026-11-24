@@ -41,8 +41,8 @@ pub struct Display {
     pub brightness: f32,
     pub enabled: bool,
     pub hw_share: f32,
-    /// The real backlight can be controlled.
-    pub has_hardware: bool,
+    /// The real backlight can be controlled; `None` until that is known.
+    pub has_hardware: Option<bool>,
     /// Whether the compositor lets us set this display's gamma.
     pub has_gamma: bool,
 }
@@ -146,7 +146,7 @@ impl Core {
             brightness: MAX_BRIGHTNESS,
             enabled,
             hw_share,
-            has_hardware: false,
+            has_hardware: None,
             has_gamma: false,
         };
         if let Some(b) = self.saved.get_parse::<f32>(&format!("display.{}", d.key()), "brightness") {
@@ -164,6 +164,19 @@ impl Core {
     pub fn set_gamma(&mut self, name: &str, works: bool) {
         if let Some(d) = self.displays.iter_mut().find(|d| d.name == name) {
             d.has_gamma = works;
+        }
+    }
+
+    /// A display's backlight was found at `level` (0–100), or can't be controlled. The first time a display
+    /// is seen, its current level becomes its brightness, so starting SLC doesn't change the screen.
+    pub fn set_hardware(&mut self, name: &str, level: Option<f32>) {
+        let saved = &self.saved;
+        if let Some(d) = self.displays.iter_mut().find(|d| d.name == name) {
+            d.has_hardware = Some(level.is_some());
+            let known = saved.get(&format!("display.{}", d.key()), "brightness").is_some();
+            if let (Some(l), false, true) = (level, known, d.hw_share > 0.0) {
+                d.brightness = (MAX_BRIGHTNESS - d.hw_share + l * d.hw_share / 100.0).max(MIN_BRIGHTNESS);
+            }
         }
     }
 
@@ -223,7 +236,11 @@ impl Core {
         if !d.enabled {
             return neutral;
         }
-        let s = engine::split(self.effective(d.brightness), d.hw_share, d.has_hardware);
+        // While unknown, assume there is a backlight: too bright for a moment beats a dark flash.
+        let mut s = engine::split(self.effective(d.brightness), d.hw_share, d.has_hardware != Some(false));
+        if d.has_hardware.is_none() {
+            s.hardware = None;
+        }
         if self.pause != Pause::No {
             // Pausing leaves the backlight where it is (panic has already set full brightness).
             return Output { hardware: s.hardware, ..neutral };
@@ -349,7 +366,8 @@ impl Core {
     /// The state file's contents.
     pub fn state(&mut self) -> &Ini {
         self.saved.set("warmth", "kelvin", self.kelvin);
-        for d in &self.displays {
+        // Until the probe, brightness is only a placeholder.
+        for d in self.displays.iter().filter(|d| d.has_hardware.is_some()) {
             self.saved.set(&format!("display.{}", d.key()), "brightness", format!("{:.1}", d.brightness));
         }
         &self.saved
@@ -414,10 +432,10 @@ impl Core {
         for (i, d) in self.displays.iter().enumerate() {
             let how = match (d.enabled, d.has_hardware, d.has_gamma) {
                 (false, ..) => "off in config",
-                (_, true, true) => "backlight + gamma",
-                (_, true, false) => "backlight only",
-                (_, false, true) => "gamma",
-                (_, false, false) => "no control",
+                (_, Some(true), true) => "backlight + gamma",
+                (_, Some(true), false) => "backlight only",
+                (_, _, true) => "gamma",
+                (_, _, false) => "no control",
             };
             out.push_str(&format!("{}  {}  {:.0}%  {how}  {}\n", i + 1, d.name, d.brightness, d.description));
         }
@@ -432,7 +450,7 @@ impl Core {
             .map(|d| {
                 format!(
                     "{{\"name\":{},\"description\":{},\"brightness\":{:.0},\"enabled\":{},\"backlight\":{},\"gamma\":{}}}",
-                    json(&d.name), json(&d.description), d.brightness, d.enabled, d.has_hardware, d.has_gamma
+                    json(&d.name), json(&d.description), d.brightness, d.enabled, d.has_hardware == Some(true), d.has_gamma
                 )
             })
             .collect();
@@ -479,6 +497,8 @@ mod tests {
         let mut c = Core::new(settings(&Ini::parse(config)), Ini::default(), &at(hour));
         c.add_display("DP-3", "Lenovo B");
         c.add_display("DP-2", "Lenovo A (DP-2)");
+        c.set_hardware("DP-2", None);
+        c.set_hardware("DP-3", None);
         c
     }
 
@@ -542,6 +562,7 @@ mod tests {
         let saved = Ini::parse(&c.state().to_text());
         let mut again = Core::new(settings(&Ini::parse("[schedule]\nenabled=0\n")), saved, &at(1.0));
         again.add_display("HDMI-A-1", "Lenovo A"); // same display, another port
+        again.set_hardware("HDMI-A-1", None);
         assert_eq!(again.output(&again.displays[0]), Output { kelvin: 3000, software: 0.3, hardware: None });
     }
 
@@ -567,7 +588,7 @@ mod tests {
     #[test]
     fn panic_raises_the_backlight_but_pause_leaves_it() {
         let mut c = core(FIXED, 12.0);
-        c.displays.iter_mut().for_each(|d| d.has_hardware = true);
+        c.displays.iter_mut().for_each(|d| d.has_hardware = Some(true));
         set(&mut c, Change::To(25.0), None).unwrap();
         let o = c.output(&c.displays[0]);
         assert_eq!((o.hardware, o.software), (Some(0.0), 0.5));
@@ -576,6 +597,24 @@ mod tests {
         assert_eq!((o.hardware, o.software), (Some(0.0), 1.0));
         c.handle(&Request::Panic, &at(12.0)).unwrap();
         assert_eq!(c.output(&c.displays[0]).hardware, Some(100.0));
+    }
+
+    #[test]
+    fn a_new_display_keeps_its_backlight_level() {
+        let mut c = core(FIXED, 12.0);
+        c.displays.iter_mut().for_each(|d| d.has_hardware = None);
+        assert_eq!(c.output(&c.displays[0]).hardware, None, "not known yet");
+        assert!(c.state().get("display.Lenovo A", "brightness").is_none(), "nothing worth remembering");
+        c.set_hardware("DP-2", Some(80.0));
+        c.set_hardware("DP-3", None);
+        assert_eq!(bright(&c), [90.0, 100.0]);
+        assert_eq!(c.output(&c.displays[0]), Output { kelvin: 6500, software: 1.0, hardware: Some(80.0) });
+        assert_eq!(c.output(&c.displays[1]).hardware, None);
+        // A remembered brightness wins.
+        let mut again = Core::new(settings(&Ini::parse(FIXED)), c.state().clone(), &at(12.0));
+        again.add_display("DP-2", "Lenovo A");
+        again.set_hardware("DP-2", Some(10.0));
+        assert_eq!(bright(&again), [90.0]);
     }
 
     #[test]

@@ -31,7 +31,7 @@ lives in **one portable `.exe`** of a few hundred KB.
 - Multi-monitor desk setups with mixed laptop panels and external DDC/CI monitors.
 
 ### Non-goals (for now)
-- macOS / Linux (Windows 10 2004+ and Windows 11 only).
+- macOS. (Linux has a command-line version: §16.)
 - ICC profile editing or professional color calibration.
 - Any cloud features or accounts.
 
@@ -373,3 +373,22 @@ Settings › General › Reminders. Both are gentle OSD countdowns: nothing is d
 - **v1.3**: smart lights (Philips Hue local API, Home Assistant) following the schedule; ambient light sensor.
 
 Details and status: [`ROADMAP.md`](ROADMAP.md).
+
+---
+
+## 16. Linux version
+
+- **Command line only** (D25). `slc daemon` runs with the session; other commands control it. One daemon per Wayland session.
+- **Pipeline**: backlight, then gamma (§4.1 split). No overlay: the gamma protocol has no range limit. Without a
+  controllable backlight, gamma does everything; without wlr-gamma-control, only the backlight works.
+- The first time a display is seen, its current backlight level becomes its brightness (§4.2). Panels never go to 0.
+  Failed writes are tried again every 30 s.
+- `slc set N` sets every display to N; `+N`/`-N` moves each one. Below 5% needs `--force`; steps stop at 5% (D30).
+- Manual warmth is an override until the schedule's phase changes (§6). `slc auto` ends it.
+- Pause: neutral colors, no software dimming, backlight untouched. Panic: 100%, 6500K, pause for 1 hour.
+- Quitting or crashing restores colors (done by the compositor) and leaves the backlight where it is.
+- Config `$XDG_CONFIG_HOME/slc/slc.ini` is read only (D29). Brightness and warmth are kept in `$XDG_STATE_HOME/slc/state.ini`,
+  by display make, model and serial.
+- Not on Linux yet: color filters, movie mode, breaks and reminders, idle dimming, per-app rules, light sensor. Their
+  scenes are left out.
+- Static musl binary, ≤ 1 MiB.

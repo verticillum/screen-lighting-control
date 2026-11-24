@@ -13,6 +13,8 @@ pub enum Command {
     Daemon,
     /// Print a commented sample config.
     SampleConfig,
+    /// Print the udev rule that allows backlight control.
+    UdevRules,
     Cities(String),
     /// Anything the running daemon answers.
     Request(Request),
@@ -73,6 +75,7 @@ Usage: slc <command>
 
   cities <name>                 search the built-in city list
   sample-config                 print a config file with the defaults
+  udev-rules                    print the rule that allows backlight control (see README)
   help | version
 
 Config: $XDG_CONFIG_HOME/slc/slc.ini (SLC never writes to it)
@@ -95,6 +98,7 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
         ("version" | "--version" | "-V", _) => Ok(Command::Version),
         ("daemon", []) => Ok(Command::Daemon),
         ("sample-config", []) => Ok(Command::SampleConfig),
+        ("udev-rules", []) => Ok(Command::UdevRules),
         ("cities", [_, ..]) => Ok(Command::Cities(rest.join(" "))),
         ("set", [value, opts @ ..]) => {
             let change = change(value)?;

@@ -1,0 +1,4 @@
+# Screen Lighting Control: lets the person at the screen set monitor brightness (DDC/CI on the graphics
+# card's i2c buses only) and, for members of the video group, laptop panel brightness.
+SUBSYSTEM=="i2c-dev", KERNEL=="i2c-[0-9]*", ATTRS{class}=="0x03*", TAG+="uaccess"
+ACTION=="add", SUBSYSTEM=="backlight", RUN+="/bin/chgrp video $sys$devpath/brightness", RUN+="/bin/chmod g+w $sys$devpath/brightness"
