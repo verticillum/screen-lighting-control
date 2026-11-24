@@ -1,5 +1,6 @@
 //! The long-running half: one thread waiting on the compositor, the control socket and signals.
 
+use super::backlight::{self, Backlight};
 use super::cli::{self, Command, Request};
 use super::core::{self, Core, Now};
 use super::wayland::{self, Wayland};
@@ -18,6 +19,9 @@ const SAVE_DELAY: Duration = Duration::from_secs(1);
 const CLIENT_TIMEOUT: Duration = Duration::from_millis(500);
 /// Longest request line.
 const MAX_REQUEST: u64 = 4096;
+
+const NO_GAMMA: &str = "warmth and software dimming need a compositor with wlr-gamma-control (Hyprland, \
+                        Sway, niri, ...); only the backlight can be controlled here";
 
 pub fn now() -> Now {
     let unix = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_secs());
@@ -75,7 +79,9 @@ fn load_settings() -> crate::model::Settings {
 
 struct Daemon {
     core: Core,
-    wayland: Wayland,
+    /// `None` outside Wayland: backlight control only.
+    wayland: Option<Wayland>,
+    backlight: Backlight,
     watchers: Vec<UnixStream>,
     last_json: String,
     save_at: Option<Instant>,
@@ -88,22 +94,33 @@ pub fn run() -> Result<(), String> {
         return Err("SLC is already running".into());
     }
     let signals = quit_signals().map_err(|e| e.to_string())?;
-    let wayland = Wayland::connect().map_err(|e| format!("cannot connect to the Wayland compositor: {e}"))?;
-    if !wayland.has_gamma_control() {
-        return Err("this compositor does not support wlr-gamma-control (Hyprland, Sway, niri and other \
-                    wlroots-style compositors do)"
-            .into());
-    }
+    let wayland = match Wayland::connect() {
+        Ok(w) => {
+            if !w.has_gamma_control() {
+                eprintln!("slc: {NO_GAMMA}");
+            }
+            Some(w)
+        }
+        Err(e) => {
+            eprintln!("slc: no Wayland compositor ({e}); {NO_GAMMA}");
+            None
+        }
+    };
+    let backlight = Backlight::start().map_err(|e| e.to_string())?;
     let _ = std::fs::remove_file(&socket); // left over from a crash
     let listener = UnixListener::bind(&socket).map_err(|e| format!("{}: {e}", socket.display()))?;
     let mut d = Daemon {
         core: Core::new(load_settings(), Ini::load(&state_path()).unwrap_or_default(), &now()),
         wayland,
+        backlight,
         watchers: Vec::new(),
         last_json: String::new(),
         save_at: None,
         quit: false,
     };
+    if d.wayland.is_none() {
+        backlight::connected().iter().for_each(|name| d.add_display(name, ""));
+    }
     let result = d.serve(&listener, &signals);
     d.save();
     let _ = std::fs::remove_file(&socket);
@@ -114,7 +131,7 @@ impl Daemon {
     fn serve(&mut self, listener: &UnixListener, signals: &OwnedFd) -> io::Result<()> {
         let mut next_tick = Instant::now() + TICK;
         while !self.quit {
-            self.take_wayland_events();
+            self.take_events();
             self.apply()?;
             self.notify();
 
@@ -126,7 +143,13 @@ impl Daemon {
             if let Some(s) = self.core.pause_left(&now()) {
                 timeout = timeout.min(Duration::from_secs(s));
             }
-            let mut fds = vec![signals.as_raw_fd(), self.wayland.fd(), listener.as_raw_fd()];
+            let mut fds = vec![
+                signals.as_raw_fd(),
+                // poll ignores negative descriptors
+                self.wayland.as_ref().map_or(-1, Wayland::fd),
+                listener.as_raw_fd(),
+                self.backlight.fd(),
+            ];
             fds.extend(self.watchers.iter().map(|w| w.as_raw_fd()));
             // Round up so a deadline has really passed when we wake.
             let ready = poll(&fds, timeout + Duration::from_millis(1))?;
@@ -135,10 +158,12 @@ impl Daemon {
                 self.quit = true;
             }
             if ready[1] {
-                self.wayland.read(false)?;
+                if let Some(w) = &mut self.wayland {
+                    w.read(false)?;
+                }
             }
             // Watchers never send anything: readable means gone.
-            let mut gone = ready[3..].iter();
+            let mut gone = ready[4..].iter();
             self.watchers.retain(|_| !gone.next().copied().unwrap_or(false));
             if ready[2] {
                 if let Ok((client, _)) = listener.accept() {
@@ -147,7 +172,10 @@ impl Daemon {
             }
             if Instant::now() >= next_tick {
                 next_tick = Instant::now() + TICK;
-                self.wayland.claim()?; // another program may have let go of the gamma
+                self.backlight.retry();
+                if let Some(w) = &mut self.wayland {
+                    w.claim()?; // another program may have let go of the gamma
+                }
             }
             self.core.tick(&now());
             if self.save_at.is_some_and(|s| Instant::now() >= s) {
@@ -157,15 +185,28 @@ impl Daemon {
         Ok(())
     }
 
-    fn take_wayland_events(&mut self) {
-        for e in self.wayland.take_events() {
+    fn add_display(&mut self, name: &str, description: &str) {
+        self.core.add_display(name, description);
+        self.backlight.probe(name);
+    }
+
+    fn take_events(&mut self) {
+        let events = self.wayland.as_mut().map(Wayland::take_events).unwrap_or_default();
+        for e in events {
             match e {
-                wayland::Event::Added { name, description } => self.core.add_display(&name, &description),
+                wayland::Event::Added { name, description } => self.add_display(&name, &description),
                 wayland::Event::Removed(name) => {
                     self.core.state(); // remember its brightness
                     self.core.remove_display(&name);
+                    self.backlight.forget(&name);
                 }
                 wayland::Event::Gamma { name, works } => self.core.set_gamma(&name, works),
+            }
+        }
+        for e in self.backlight.take_events() {
+            match e {
+                backlight::Event::Probed { name, level } => self.core.set_hardware(&name, level),
+                backlight::Event::Failed { name } => eprintln!("slc: {name}: backlight write failed"),
             }
         }
     }
@@ -173,7 +214,12 @@ impl Daemon {
     fn apply(&mut self) -> io::Result<()> {
         for d in self.core.displays() {
             let o = self.core.output(d);
-            self.wayland.set_gamma(&d.name, color::white_point(o.kelvin), o.software)?;
+            if let Some(w) = &mut self.wayland {
+                w.set_gamma(&d.name, color::white_point(o.kelvin), o.software)?;
+            }
+            if let Some(level) = o.hardware {
+                self.backlight.set(&d.name, level);
+            }
         }
         Ok(())
     }
@@ -224,6 +270,11 @@ impl Daemon {
             Request::Scenes => Ok(self.core.scenes_text()),
             Request::Reload => {
                 self.core.set_settings(load_settings(), &now());
+                // Device permissions may have changed too.
+                for d in self.core.displays() {
+                    self.backlight.forget(&d.name);
+                    self.backlight.probe(&d.name);
+                }
                 Ok(String::new())
             }
             Request::Quit => {

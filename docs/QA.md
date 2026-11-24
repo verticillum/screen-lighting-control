@@ -77,3 +77,10 @@ Run on a real Windows machine before tagging a release. ✅ = verified for v1.0.
 - ✅ 1.3.3: after uninstall both `Programs\SLC` and `%APPDATA%\SLC` are deleted (not just emptied), `HKCU\Software\MONTINA` gone;
   the folder SLC was installed from can be deleted while SLC runs
 - ⚠️ Elevated `--restore-range` during uninstall not run on the owner's machine (the owner wants the expanded range)
+
+## Linux 1.6.0 (2026-11-24, Hyprland 0.57, 2 × Lenovo T2254pC over DisplayPort, Intel graphics)
+- ✅ Backlight at 80/70/60/53/35%, per display, read back over DDC by a separate program
+- ✅ First start leaves the backlight unchanged; panic; pause; single instance; watch
+- ✅ `kill -9`, then restart: socket taken over, brightness kept
+- ⚠️ Gamma: requests accepted by the compositor; the visible result was not checked by a person or a sensor
+- ⚠️ Not observed: laptop panels, hotplug, suspend, other compositors, sessions without Wayland

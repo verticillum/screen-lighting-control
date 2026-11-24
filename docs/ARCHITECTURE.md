@@ -156,6 +156,7 @@ as on Windows.
 | `cli.rs` | Parses commands. Used by the client (errors) and the daemon (requests). |
 | `core.rs` | The state and what each display should show. Pure, unit-tested. |
 | `wayland.rs` | Minimal Wayland client: outputs and `zwlr_gamma_control_v1`. |
+| `backlight.rs` | DDC/CI over `/dev/i2c-*` (bus found through `/sys/class/drm/<connector>/ddc`) and `/sys/class/backlight`, on a worker thread with a 250 ms debounce. |
 | `daemon.rs` | Poll loop: compositor, socket, signals, schedule tick (30 s), delayed state save. |
 
 - **Safety**: the compositor restores normal colors when the daemon's connection closes, including after a crash.

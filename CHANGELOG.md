@@ -4,6 +4,16 @@ All notable changes to SLC. Versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-24
+
+### Added
+- **Linux version**, command line only: `slc daemon` plus `slc set`, `warmth`, `auto`, `scene`, `pause`, `panic`, `status`,
+  `watch` and more. Real backlight (DDC/CI, laptop panels) plus gamma; the same schedule and scenes as on Windows. Warmth
+  and software dimming need a compositor with wlr-gamma-control (Hyprland, Sway, niri, …); elsewhere SLC controls the
+  backlight only. One static binary for any x86-64 distribution.
+
+No changes on Windows: this release has no `slc.exe`; keep using 1.5.4.
+
 ## [1.5.4] - 2026-10-06
 
 ### Changed

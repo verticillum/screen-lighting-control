@@ -1,6 +1,10 @@
 # CLAUDE.md
 
-SLC (Screen Lighting Control) is a tiny Windows tray utility for screen brightness and color temperature. **Performance and size come first**: one static exe, no runtime, no network. Read `docs/PRODUCT.md` (spec), `docs/ARCHITECTURE.md`, and `docs/DECISIONS.md` before designing anything; `docs/DEVELOPMENT.md` has the full toolchain notes.
+SLC (Screen Lighting Control) is a tiny utility for screen brightness and color temperature: a tray app on Windows, a daemon plus command line on Linux (`src/linux/`). **Performance and size come first**: one static binary, no runtime, no network. Read `docs/PRODUCT.md` (spec), `docs/ARCHITECTURE.md`, and `docs/DECISIONS.md` before designing anything; `docs/DEVELOPMENT.md` has the full toolchain notes.
+
+## Commands on Linux
+
+`./.local-ci` runs everything that works without Windows (the Windows code is only linted). Single steps: `cargo clippy|test|build --target x86_64-unknown-linux-musl`. Testing: use a scratch `XDG_CONFIG_HOME`/`XDG_STATE_HOME`, and `[schedule] enabled=0` keeps the screens neutral.
 
 ## Commands (from WSL)
 
@@ -30,7 +34,7 @@ The user runs SLC day to day. `scripts/smoke.ps1` does an install → uninstall 
 ## Rules
 
 - Never leave the user in the dark: the panic hotkey, the confirmation below 5%, `--reset`, and crash recovery must keep working. Any change to dimming paths needs a test or live check of the restore path.
-- Native Win32 + Direct2D only. No UI framework, no new heavy dependencies; justify any new crate against the size budget.
+- Windows: native Win32 + Direct2D only. Linux: command line only, `libc` only; bar and desktop configs do not belong in this repo. No UI framework, no new heavy dependencies; justify any new crate against the size budget.
 - Decision logic (schedule, solar math, color, safety) goes in pure functions with unit tests, separate from Win32 calls.
 - Product decisions go in `docs/DECISIONS.md` (numbered `D<n>` rows).
 - Workflow: `feat/`, `fix/`, `docs/` branches; one PR per roadmap item, merged by you (squash) once `local-ci` passes; update `CHANGELOG.md`, `docs/ROADMAP.md`, and `docs/QA.md` in the same PR. Commit subjects look like `feat: computer-break reminders; release 1.5.0 (#33)`.
