@@ -1,388 +1,70 @@
-//! Screen Lighting Control (SLC) — entry point.
-#![cfg_attr(not(test), windows_subsystem = "windows")]
+//! Screen Lighting Control (SLC) — entry point. The decision logic (color, schedule, settings, pipeline
+//! split) is shared; each platform has its own shell around it.
+#![cfg_attr(all(windows, not(test)), windows_subsystem = "windows")]
 
-mod ambient;
-mod app;
+#[cfg_attr(not(windows), allow(dead_code))] // not every shared item is used on Linux
 mod cities;
-mod cli;
+#[cfg_attr(not(windows), allow(dead_code))] // not every shared item is used on Linux
 mod color;
+#[cfg_attr(not(windows), allow(dead_code))] // not every shared item is used on Linux
 mod config;
+#[cfg_attr(not(windows), allow(dead_code))] // not every shared item is used on Linux
 mod engine;
-mod foreground;
-mod glyph;
-mod hotkeys;
-mod icon;
-mod idle;
-mod install;
+#[cfg_attr(not(windows), allow(dead_code))] // not every shared item is used on Linux
 mod log;
+#[cfg_attr(not(windows), allow(dead_code))] // not every shared item is used on Linux
 mod model;
-mod monitors;
-mod safety;
+#[cfg_attr(not(windows), allow(dead_code))] // not every shared item is used on Linux
 mod schedule;
+#[cfg_attr(not(windows), allow(dead_code))]
 mod solar;
-mod tray;
-mod ui;
-mod win;
-mod worker;
 
-use cli::Command;
-use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
-use windows::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
-use windows::Win32::System::Threading::CreateMutexW;
-use windows::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
-use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
+#[cfg(windows)]
+mod ambient;
+#[cfg(windows)]
+mod app;
+#[cfg(windows)]
+mod cli;
+#[cfg(windows)]
+mod foreground;
+#[cfg(windows)]
+mod glyph;
+#[cfg(windows)]
+mod hotkeys;
+#[cfg(windows)]
+mod icon;
+#[cfg(windows)]
+mod idle;
+#[cfg(windows)]
+mod install;
+#[cfg(windows)]
+mod monitors;
+#[cfg(windows)]
+mod safety;
+#[cfg(windows)]
+mod tray;
+#[cfg(windows)]
+mod ui;
+#[cfg(windows)]
+mod win;
+#[cfg(windows)]
+mod windows_main;
+#[cfg(windows)]
+mod worker;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+#[cfg(windows)]
 fn main() {
-    let cli = match cli::parse(std::env::args().skip(1)) {
-        Ok(c) => c,
-        Err(e) => {
-            console();
-            eprintln!("slc: {e}\n\n{}", cli::HELP);
-            std::process::exit(2);
-        }
-    };
-    if let Some(f) = &cli.log_file {
-        log::enable_file(std::path::Path::new(f));
-    }
-    info!("SLC {VERSION} starting: {:?}", cli.command);
-    let code = match cli.command {
-        Command::Run => run(),
-        Command::Help => {
-            console();
-            println!("{}", cli::HELP);
-            0
-        }
-        Command::Version => {
-            console();
-            println!("SLC {VERSION}");
-            0
-        }
-        Command::Reset => {
-            console();
-            cmd_reset()
-        }
-        Command::ExpandRange => {
-            console();
-            match install::expand_gamma_range() {
-                Ok(()) => {
-                    install::mark_range_expanded_by_slc();
-                    println!("SLC: color range expanded; sign out and back in to apply");
-                    if !cli.quiet {
-                        install::ask(
-                            "Done. Windows will allow SLC's full color range after you sign out and back in (or restart).",
-                            false,
-                        );
-                    }
-                    0
-                }
-                Err(e) => {
-                    eprintln!("slc: {e}");
-                    if !cli.quiet {
-                        install::ask(&format!("Could not expand the color range: {e}"), false);
-                    }
-                    1
-                }
-            }
-        }
-        Command::RestoreRange => {
-            console();
-            match install::restore_gamma_range() {
-                Ok(()) => 0,
-                Err(e) => {
-                    eprintln!("slc: {e}");
-                    1
-                }
-            }
-        }
-        Command::Install => {
-            console();
-            cmd_install()
-        }
-        Command::Uninstall => {
-            console();
-            cmd_uninstall(cli.quiet, cli.yes)
-        }
-        Command::Forward(line) => {
-            console();
-            forward(&line)
-        }
-        Command::SelfTest => {
-            console();
-            self_test()
-        }
-    };
-    std::process::exit(code);
+    windows_main::main();
 }
 
-/// Attaches to the parent console so CLI output is visible (we are a GUI-subsystem exe).
-fn console() {
-    unsafe {
-        let _ = AttachConsole(ATTACH_PARENT_PROCESS);
+#[cfg(not(windows))]
+fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--version") {
+        println!("SLC {VERSION}");
+        return;
     }
-}
-
-fn run() -> i32 {
-    unsafe {
-        let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-        // Single instance: the mutex lives until the process exits.
-        let _mutex = CreateMutexW(None, false, win::INSTANCE_MUTEX);
-        if GetLastError() == ERROR_ALREADY_EXISTS {
-            // The other instance may still be starting: give its window a moment to appear.
-            for _ in 0..20 {
-                if let Ok(h) = FindWindowW(win::CONTROLLER_CLASS, None) {
-                    win::post(h, win::WM_APP_ACTIVATE, 0, 0);
-                    return 0;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(100));
-            }
-            // A mutex without a window means a hung or dying process: start anyway.
-            info!("instance mutex held but no running window; starting anyway");
-        }
-    }
-    let paths = config::resolve();
-    safety::install(&paths.state);
-    let recovered = safety::begin_session();
-    if recovered {
-        info!("previous session did not end cleanly; resetting gamma");
-        safety::emergency_reset();
-    }
-    let app = match app::App::create(paths, recovered) {
-        Ok(a) => a,
-        Err(e) => {
-            info!("startup failed: {e}");
-            return 1;
-        }
-    };
-    let code = app::run_loop();
-    drop(app);
-    info!("exit {code}");
-    if let Some((exe, args)) = app::take_relaunch() {
-        let args: Vec<&str> = args.iter().map(String::as_str).collect();
-        info!("relaunching {} {:?}", exe.display(), args);
-        install::launch(&exe, &args);
-    }
-    code
-}
-
-/// Asks a running instance to exit and waits (up to 3 s) for it to go away.
-fn stop_running_instance() -> bool {
-    let Ok(hwnd) = (unsafe { FindWindowW(win::CONTROLLER_CLASS, None) }) else { return false };
-    forward("--exit");
-    for _ in 0..30 {
-        if unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindow(Some(hwnd)) }.as_bool() {
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        } else {
-            break;
-        }
-    }
-    true
-}
-
-/// `--reset`: neutral colors, normal pointer and full backlight on every monitor (PRODUCT §11/§12).
-/// A running instance is closed first so it cannot re-apply its state, and the saved brightness and
-/// warmth are reset too so the next start does not dim again.
-fn cmd_reset() -> i32 {
-    stop_running_instance();
-    let mons = monitors::enumerate();
-    let n = engine::reset_all(&mons);
-    engine::cursor::restore();
-    let mut backlights = 0;
-    for m in &mons {
-        if engine::hardware::write(m.hmon, m.internal, 100.0) {
-            backlights += 1;
-        }
-    }
-    let path = config::resolve().settings;
-    if let Some(ini) = config::Ini::load(&path) {
-        let mut s = model::Settings::from_ini(&ini);
-        s.kelvin = color::NEUTRAL_KELVIN;
-        for (_, m) in s.monitors.iter_mut() {
-            m.brightness = engine::MAX_BRIGHTNESS;
-        }
-        if let Err(e) = s.to_ini().save(&path) {
-            eprintln!("slc: could not update settings: {e}");
-        }
-    }
-    println!("SLC: reset {n} monitor(s); backlight set to 100% on {backlights}");
-    0
-}
-
-fn cmd_install() -> i32 {
-    stop_running_instance();
-    match install::install() {
-        Ok(target) => {
-            println!("SLC: installed to {}", target.display());
-            install::launch(&target, &[]);
-            0
-        }
-        Err(e) => {
-            eprintln!("slc: install failed: {e}");
-            install::ask(&format!("Installation failed: {e}"), false);
-            1
-        }
-    }
-}
-
-fn cmd_uninstall(quiet: bool, confirmed: bool) -> i32 {
-    if !quiet && !confirmed && !install::ask("Remove Screen Lighting Control from this computer?", true) {
-        return 1;
-    }
-    stop_running_instance();
-    // Put the screens back the way they were before SLC.
-    let mons = monitors::enumerate();
-    engine::reset_all(&mons);
-    let settings = config::Ini::load(&config::resolve().settings).map(|i| model::Settings::from_ini(&i));
-    if let Some(s) = &settings {
-        for m in &mons {
-            if let Some(level) = s.monitor(&monitors::settings_key(&m.id)).and_then(|ms| ms.original_hw) {
-                engine::hardware::write(m.hmon, m.internal, level);
-            }
-        }
-    }
-    // Undo the Windows color-range setting, but only if SLC turned it on (another program such as
-    // f.lux may rely on it otherwise). This needs administrator rights: Windows asks once.
-    let mut range_note = "";
-    if install::range_expanded_by_slc() && install::gamma_range_expanded() {
-        match install::run_elevated_wait("--restore-range", 60_000) {
-            Some(0) => range_note = "\n\nThe Windows color-range setting was restored too.",
-            _ => {
-                range_note = "\n\nThe Windows color-range setting could not be restored (administrator permission was not given). It is harmless; SLC Settings › Displays explains it.";
-                info!("color range not restored (elevation declined or failed)");
-            }
-        }
-    }
-    match install::uninstall() {
-        Ok(()) => {
-            println!("SLC: uninstalled");
-            if !quiet {
-                install::ask(
-                    &format!(
-                        "Screen Lighting Control and all of its files and settings were removed.{range_note}"
-                    ),
-                    false,
-                );
-            }
-            0
-        }
-        Err(e) => {
-            eprintln!("slc: uninstall failed: {e}");
-            1
-        }
-    }
-}
-
-/// Sends a request line to the running instance (WM_COPYDATA).
-fn forward(line: &str) -> i32 {
-    if let Err(e) = cli::parse_forward(line) {
-        eprintln!("slc: {e}");
-        return 2;
-    }
-    let Ok(hwnd) = (unsafe { FindWindowW(win::CONTROLLER_CLASS, None) }) else {
-        eprintln!("slc: SLC is not running");
-        return 1;
-    };
-    let bytes = line.as_bytes();
-    let cds = windows::Win32::System::DataExchange::COPYDATASTRUCT {
-        dwData: win::COPYDATA_FORWARD,
-        cbData: bytes.len() as u32,
-        lpData: bytes.as_ptr() as *mut _,
-    };
-    let r = unsafe {
-        windows::Win32::UI::WindowsAndMessaging::SendMessageW(
-            hwnd,
-            windows::Win32::UI::WindowsAndMessaging::WM_COPYDATA,
-            Some(windows::Win32::Foundation::WPARAM(0)),
-            Some(windows::Win32::Foundation::LPARAM(&cds as *const _ as isize)),
-        )
-    };
-    if r.0 == 1 {
-        0
-    } else {
-        eprintln!("slc: the running instance rejected the request");
-        1
-    }
-}
-
-/// Non-interactive checks (CI and diagnostics): prints what SLC can see and control.
-fn self_test() -> i32 {
-    let mons = monitors::enumerate();
-    println!("SLC {VERSION} self-test: {} monitor(s)", mons.len());
-    for (i, m) in mons.iter().enumerate() {
-        let ramp = engine::gamma::read(&m.device);
-        let hw = engine::hardware::read(m.hmon, m.internal);
-        println!(
-            "  #{} {} [{}] {}x{} primary={} internal={} hdr={} gamma={} hardware={}",
-            i + 1,
-            m.name,
-            m.device,
-            m.width(),
-            m.height(),
-            m.primary,
-            m.internal,
-            m.hdr,
-            if ramp.is_some() { "readable" } else { "unavailable" },
-            match hw {
-                Some(c) => format!("{:?} {:.0}%", c.kind, c.current),
-                None => "none".into(),
-            }
-        );
-    }
-    // Gamma probe: apply a strong warm + dim ramp for a moment, report what Windows accepted, restore.
-    for m in &mons {
-        let probes = [(2700, 0.5), (1200, 0.2), (3400, 1.0)];
-        let mut st = engine::gamma::State::default();
-        for (k, scale) in probes {
-            let t0 = std::time::Instant::now();
-            let a = engine::gamma::apply(&m.device, k, scale, &mut st);
-            let ms = t0.elapsed().as_secs_f32() * 1000.0;
-            println!(
-                "  probe {} {k}K x{scale}: scale={:.2} warmth={:.2} limited={} failed={} ({ms:.1} ms, bound {:.3})",
-                m.device, a.scale, a.warmth, a.limited, a.failed, st.bound
-            );
-        }
-        engine::gamma::reset(&m.device);
-    }
-    // Schedule (from the settings next to the exe or the installed copy).
-    let settings = config::Ini::load(&config::resolve().settings)
-        .map(|i| model::Settings::from_ini(&i))
-        .unwrap_or_default();
-    let sc = &settings.schedule;
-    let (y, doy, t, off) = schedule::now_local();
-    let ev = schedule::events(sc, y, doy, off);
-    let tg = schedule::target_at(sc, &ev, t);
-    println!(
-        "  schedule: enabled={} location={} day_start={} sunset={} night_start={} now={} -> {}K {:?} (UTC{:+}h)",
-        sc.enabled,
-        if sc.has_location() { format!("{} ({:.2},{:.2})", sc.city, sc.lat, sc.lon) } else { "none (fixed times)".into() },
-        model::format_hm(ev.day_start.round() as u32),
-        model::format_hm(ev.sunset.round() as u32),
-        model::format_hm(ev.night_start.round() as u32),
-        model::format_hm(t as u32),
-        tg.kelvin,
-        tg.phase,
-        off / 60.0
-    );
-    println!(
-        "  idle: {} s since last input; audio playing: {}",
-        idle::idle_ms() / 1000,
-        idle::audio_playing()
-    );
-    match ambient::Sensor::open() {
-        Some(s) => println!("  light sensor: {:?} lux", s.lux()),
-        None => println!("  light sensor: none"),
-    }
-    if let Some((b, n, color)) = engine::cursor::arrow_brightness() {
-        println!("  arrow cursor: avg {b:.0}/255 over {n} px (color={color})");
-    }
-    // Pure-logic sanity: neutral white and ramp construction.
-    let ok = color::white_point(6500).iter().all(|c| (c - 1.0).abs() < 1e-3)
-        && color::build_ramp([1.0; 3], 1.0, 1.0) == color::identity_ramp();
-    println!("  color math: {}", if ok { "ok" } else { "FAILED" });
-    if ok {
-        0
-    } else {
-        1
-    }
+    eprintln!("slc: {VERSION} has no Linux version yet");
+    std::process::exit(1);
 }

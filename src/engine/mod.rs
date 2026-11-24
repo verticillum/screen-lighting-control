@@ -1,17 +1,26 @@
 //! The hybrid brightness pipeline (PRODUCT.md §4): one brightness value per monitor is split
 //! into a hardware level, a gamma scale and an overlay opacity.
 
+#[cfg(windows)]
 pub mod cursor;
+#[cfg(windows)]
 pub mod gamma;
+#[cfg(windows)]
 pub mod hardware;
+#[cfg(windows)]
 pub mod magnify;
+#[cfg(windows)]
 pub mod overlay;
 
+#[cfg(windows)]
 use crate::info;
+#[cfg(windows)]
 use crate::monitors::Monitor;
+#[cfg(windows)]
 use std::sync::{Arc, Mutex};
 
 /// Results coming back from the worker threads to the UI thread.
+#[cfg(windows)]
 #[derive(Debug)]
 pub enum Event {
     Gamma { gen: u64, index: usize, kelvin: u32, scale: f32, applied: gamma::Applied, bound: f32 },
@@ -20,6 +29,7 @@ pub enum Event {
 }
 
 /// Thread-safe event queue that wakes the UI thread with a posted message.
+#[cfg(windows)]
 #[derive(Clone)]
 pub struct Events {
     queue: Arc<Mutex<Vec<Event>>>,
@@ -28,6 +38,7 @@ pub struct Events {
     msg: u32,
 }
 
+#[cfg(windows)]
 impl Events {
     pub fn new(hwnd: windows::Win32::Foundation::HWND, msg: u32) -> Self {
         Events { queue: Arc::default(), hwnd: hwnd.0 as isize, msg }
@@ -77,6 +88,20 @@ pub fn split(b: f32, hw_share: f32, has_hardware: bool) -> Split {
     }
 }
 
+/// Maps a 0–100 level to a device value in `min..=max`.
+pub fn to_device(level: f32, min: u32, max: u32) -> u32 {
+    let l = level.clamp(0.0, 100.0) / 100.0;
+    min + ((max - min) as f32 * l).round() as u32
+}
+
+/// Maps a device value back to 0–100.
+pub fn from_device(value: u32, min: u32, max: u32) -> f32 {
+    if max <= min {
+        return 100.0;
+    }
+    (value.clamp(min, max) - min) as f32 * 100.0 / (max - min) as f32
+}
+
 /// Divides a software factor between gamma (`gamma`, what the ramp achieved) and the overlay.
 /// Returns the overlay opacity (0–1) so that `gamma · (1 − α) = software`.
 pub fn overlay_alpha(software: f32, gamma: f32) -> f32 {
@@ -87,6 +112,7 @@ pub fn overlay_alpha(software: f32, gamma: f32) -> f32 {
 }
 
 /// Removes every effect from every monitor. Returns how many monitors were reset.
+#[cfg(windows)]
 pub fn reset_all(monitors: &[Monitor]) -> usize {
     let mut n = 0;
     for m in monitors {

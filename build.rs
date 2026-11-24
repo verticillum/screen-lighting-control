@@ -87,7 +87,11 @@ const MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?
 fn main() {
     println!("cargo:rerun-if-changed=src/glyph.rs");
     println!("cargo:rerun-if-changed=build.rs");
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+    println!("cargo:rerun-if-env-changed=SLC_SKIP_RESOURCES");
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows")
+        // Type-checking the Windows target without a resource compiler (Linux `.local-ci`).
+        || std::env::var_os("SLC_SKIP_RESOURCES").is_some()
+    {
         return;
     }
     let out = std::env::var("OUT_DIR").expect("OUT_DIR");
