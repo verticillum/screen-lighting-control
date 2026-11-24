@@ -144,3 +144,21 @@ reboots and port changes for the same physical monitor.
 - No panics in normal paths: Win32 failures are logged and degrade gracefully.
 - Logging: a tiny ring buffer (last 200 lines) shown in About → "Copy diagnostics"; `--log` mirrors it to a file.
 - Branches: `feat/<name>`, `fix/<name>`, `docs/<name>`; one PR per major feature; squash-merge.
+
+## 9. Linux (`src/linux/`)
+
+One static binary. `slc daemon` is a single-threaded `poll` loop; every other command sends one request line to its Unix
+socket (`$XDG_RUNTIME_DIR/slc-$WAYLAND_DISPLAY.sock`). The shared color, schedule, settings and pipeline code is the same
+as on Windows.
+
+| Module | Responsibility |
+|---|---|
+| `cli.rs` | Parses commands. Used by the client (errors) and the daemon (requests). |
+| `core.rs` | The state and what each display should show. Pure, unit-tested. |
+| `wayland.rs` | Minimal Wayland client: outputs and `zwlr_gamma_control_v1`. |
+| `daemon.rs` | Poll loop: compositor, socket, signals, schedule tick (30 s), delayed state save. |
+
+- **Safety**: the compositor restores normal colors when the daemon's connection closes, including after a crash.
+- **Files**: `slc.ini` belongs to the user and is never written; brightness and warmth go in
+  `$XDG_STATE_HOME/slc/state.ini`.
+- Crates: `libc` only.
