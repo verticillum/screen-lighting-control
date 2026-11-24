@@ -61,6 +61,10 @@ fn main() {
 
 #[cfg(not(windows))]
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--version") {
+        println!("SLC {VERSION}");
+        return;
+    }
     eprintln!("slc: {VERSION} has no Linux version yet");
     std::process::exit(1);
 }
