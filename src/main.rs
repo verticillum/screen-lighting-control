@@ -37,6 +37,8 @@ mod icon;
 mod idle;
 #[cfg(windows)]
 mod install;
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(windows)]
 mod monitors;
 #[cfg(windows)]
@@ -59,12 +61,7 @@ fn main() {
     windows_main::main();
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 fn main() {
-    if std::env::args().nth(1).as_deref() == Some("--version") {
-        println!("SLC {VERSION}");
-        return;
-    }
-    eprintln!("slc: {VERSION} has no Linux version yet");
-    std::process::exit(1);
+    linux::main();
 }

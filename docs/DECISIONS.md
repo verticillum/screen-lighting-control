@@ -32,3 +32,6 @@ follow from them.
 | D25 | Linux interface | **Command line only**: no tray, flyout or settings window. Bars and desktops integrate from the user's own dotfiles, not this repo — owner, 2026-11-24 | `slc` must work for any distribution and bar. |
 | D26 | Linux brightness | **Backlight (DDC/CI) + gamma**, falling back to gamma alone without the one-time device permission — owner, 2026-11-24 | Same hybrid pipeline; no overlay, because the Wayland gamma protocol has no range limit. |
 | D27 | Linux scope | **Core first**: brightness, warmth, schedule, scenes, per-display, pause, panic, status. **wlr-gamma-control compositors** (Hyprland, Sway, niri, …) first — owner, 2026-11-24 | X11, GNOME and KDE can be added later. |
+| D28 | Linux dependency | **`libc`** on Linux only (D17 otherwise stands) — decided by Claude, pending review, 2026-11-24 | Correct struct layouts for `poll`, `sendmsg`, `signalfd`, `ioctl`. The Wayland wire protocol is written in-house. |
+| D29 | Linux config | **SLC never writes the config file**; state is separate — decided by Claude, pending review, 2026-11-24 | Config often lives in a dotfiles repo, where rewriting would show up as changes. |
+| D30 | Linux deep dim | **Below 5% needs `--force`**, and steps stop at 5% — decided by Claude, pending review, 2026-11-24 | Replaces the Windows confirmation dialog (D14). |
