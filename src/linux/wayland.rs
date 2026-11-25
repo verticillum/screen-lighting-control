@@ -12,8 +12,8 @@ const DISPLAY: u32 = 1;
 const REGISTRY: u32 = 2;
 /// Object IDs from here on are allocated in order.
 const FIRST_ID: u32 = 3;
-/// Larger than any ramp a compositor reports (they use 256–4096).
-const MAX_RAMP: u32 = 65_536;
+/// Larger than any ramp a compositor reports: most use 256–4096, Intel Tiger Lake laptops 262,145.
+const MAX_RAMP: u32 = 1 << 20;
 
 struct Output {
     global: u32,
@@ -91,6 +91,10 @@ fn put_string(out: &mut Vec<u8>, s: &str) {
     out.extend(s.as_bytes());
     out.push(0);
     out.resize(out.len().next_multiple_of(4), 0);
+}
+
+fn supported_ramp(size: u32) -> bool {
+    (2..=MAX_RAMP).contains(&size)
 }
 
 /// A gamma table for `size` entries per channel: red, green, blue, native-endian u16.
@@ -310,8 +314,12 @@ impl Wayland {
             let name = o.name.clone();
             if opcode == 0 {
                 let size = a.u32()?;
-                if !(2..=MAX_RAMP).contains(&size) {
-                    return Err(Error::other(format!("bad gamma size {size}")));
+                if !supported_ramp(size) {
+                    // Only this output goes without gamma; the others keep theirs.
+                    o.gamma = None;
+                    self.request(object, 1, &[], None)?;
+                    self.events.push(Event::Gamma { name, works: false });
+                    return Ok(());
                 }
                 if let Some(g) = &mut o.gamma {
                     g.size = Some(size);
@@ -364,6 +372,18 @@ mod tests {
         let r = ramp(3, [1.0, 0.5, 0.0], 0.5);
         let v: Vec<u16> = r.chunks(2).map(|c| u16::from_ne_bytes([c[0], c[1]])).collect();
         assert_eq!(v, [0, 16384, 32768, 0, 8192, 16384, 0, 0, 0]);
+    }
+
+    #[test]
+    fn large_ramps() {
+        // Intel Tiger Lake's built-in panel.
+        assert!(supported_ramp(262_145));
+        assert!(!supported_ramp(1) && !supported_ramp(u32::MAX));
+        let r = ramp(262_145, [1.0, 0.5, 0.0], 1.0);
+        assert_eq!(r.len(), 262_145 * 3 * 2);
+        let at = |i: usize| u16::from_ne_bytes([r[i * 2], r[i * 2 + 1]]);
+        assert_eq!((at(0), at(262_144)), (0, 65535));
+        assert_eq!((at(262_145), at(524_289)), (0, 32768));
     }
 
     #[test]
