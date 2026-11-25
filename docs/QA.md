@@ -84,3 +84,8 @@ Run on a real Windows machine before tagging a release. ✅ = verified for v1.0.
 - ✅ `kill -9`, then restart: socket taken over, brightness kept
 - ⚠️ Gamma: requests accepted by the compositor; the visible result was not checked by a person or a sensor
 - ⚠️ Not observed: laptop panels, hotplug, suspend, other compositors, sessions without Wayland
+
+## Linux, unreleased (2026-11-25, Hyprland 0.57, ThinkPad T15 Gen 2, Tiger Lake, built-in panel)
+- ✅ 262,145-entry gamma table: status changes from "backlight only" to "backlight + gamma"; tables at 6500/4000/3400/1500 K
+  sent without errors
+- ⚠️ The visible colour was not checked by a sensor; the fallback for one unsupported display was not exercised
