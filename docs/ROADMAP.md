@@ -55,3 +55,4 @@ Each line is roughly one pull request. Status: ⬜ planned · 🟨 in progress �
 
 ## 1.7 — Linux trimmed (Linux only)
 - ✅ Scenes removed; brightness and warmth only (D32)
+- ✅ 1.7.1: gamma tables with 262,145 entries (Intel Tiger Lake) — #6

@@ -4,9 +4,13 @@ All notable changes to SLC. Versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-11-25
+
 ### Fixed
 - **Linux: warmth and software dimming on Intel Tiger Lake laptops**, whose gamma table has 262,145 entries. SLC refused it
   and fell back to the backlight only. One display with an unsupported table no longer turns gamma off for the others.
+
+No changes on Windows: this release has no `slc.exe`; keep using 1.5.4.
 
 ## [1.7.0] - 2026-11-24
 
